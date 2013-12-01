@@ -1,4 +1,4 @@
-package com.example.myfirstservice;
+package com.mobilesec.mutator;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -18,14 +18,13 @@ import android.os.RemoteException;
 import android.util.Base64;
 import android.util.Log;
 
-public class MyService extends Service {
+public class MutatorService extends Service {
  
     public class RequestHandler extends Handler {
     	
 		// Message commands (incoming what)
 		public static final int FSERV_CMD_ECHO = 0;
 		public static final int FSERV_CMD_FWRD = 1;
-		public static final int FSERV_CMD_TEST = 2;
 
 		// Message forward types (incoming arg1)
 		public static final int FSERV_FWD_START_ACT = 0;
@@ -100,7 +99,7 @@ public class MyService extends Service {
 			{
 
 			// Echo fuzzed data
-			case FSERV_CMD_TEST :
+			case FSERV_CMD_ECHO :
 				Log.i("com.mobilesec.mutatorservice", "Test Command! Returning mut_data");
 
 				m = new Mutator(seed,ratio);
@@ -132,18 +131,7 @@ public class MyService extends Service {
 				send(msg.replyTo, repl);
 				return;
 
-
-				// Echo fuzzed data
-			case FSERV_CMD_ECHO :
-				// Initialize mutator and fuzz the data
-				m = new Mutator(seed,ratio);
-				fuzzed = m.mutate(mut_data);
-
-				repl.setData(fuzzed);
-				send(msg.replyTo, repl);
-				return;
-
-				// Forward fuzzed data
+			// Forward fuzzed data
 			case FSERV_CMD_FWRD :
 				// Initialize mutator and fuzz the data
 				m = new Mutator(seed,ratio);

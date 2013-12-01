@@ -15,7 +15,7 @@
         android:theme="@style/AppTheme" >
         
 		<service
-			android:name="com.example.myfirstservice.MyService"
+			android:name="com.mobilesec.mutator.MutatorService"
 			android:exported="true"
 			android:process="com.example.myfirstservice.MyService.s"  />
 
