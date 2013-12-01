@@ -1,136 +1,285 @@
 package com.example.myfirstservice;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.zip.GZIPInputStream;
+
 import android.app.Service;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
+import android.os.Parcel;
 import android.os.RemoteException;
+import android.util.Base64;
 import android.util.Log;
 
 public class MyService extends Service {
  
     public class RequestHandler extends Handler {
     	
-    	// Message commands (incoming what)
-    	public static final int FSERV_CMD_ECHO = 0;
-    	public static final int FSERV_CMD_FWRD = 1;
-    	
-    	// Message forward types (incoming arg1)
-    	public static final int FSERV_FWD_START_ACT = 0;
-    	public static final int FSERV_FWD_START_ACT_FOR_RES = 1;
-    	public static final int FSERV_FWD_SEND_BCST = 2;
-    	public static final int FSERV_FWD_SEND_ORD_BCST = 3;
-    	
-    	// Message fuzz types (incoming arg2)
-    	public static final int FSERV_FUZZ_MUTATE = 0;
-    	public static final int FSERV_FUZZ_MANGLE = 1;
-    	public static final int FSERV_FUZZ_BRUTAL = 2;
-    	
-    	// Message replies (outgoing what)
-    	public static final int FSERV_REPL_TIMEOUT = 1;
-    	public static final int FSERV_REPL_SUCCESS = 0;
-    	public static final int FSERV_REPL_EUNIMPL = -2;
-    	public static final int FSERV_REPL_ENODATA = -3;
-    	public static final int FSERV_REPL_ENOTARG = -4;
-    	
-    	// Message bundle keys
-        public static final String FSERV_KEY_SEED = "mut_seed";
-        public static final String FSERV_KEY_RATIO = "mut_ratio";
-        public static final String FSERV_KEY_DATA = "mut_data";
-        public static final String FSERV_KEY_TIMEOUT = "ipc_timout";
-        public static final String FSERV_KEY_TARGPKG = "ipc_target_package";
-        public static final String FSERV_KEY_TARGCMP = "ipc_target_component";
-        
-        @Override
-        public void handleMessage(Message msg) {
-            Log.i("MyService", "Message recieved from client: "
-            		+ msg.what + " " + msg.arg1 + " " + msg.arg2);
-            
-            // No return address, no service
-            if (msg.replyTo == null) return;
-            
-            // Initialize reply and grab data
-            Message repl = Message.obtain();
-            Bundle data = msg.getData();
-            
-            // Ensure we were sent data to fuzz
-            if (data == null) {
-          		repl.what = FSERV_REPL_ENODATA;
-            	send(msg.replyTo, repl);
-          		return;
-            }
-            
-            // Initialize mutator and fuzz the data
-            long seed = data.getLong(FSERV_KEY_SEED, 10);
-            float ratio = data.getFloat(FSERV_KEY_RATIO, 0.01f);
-            Mutator m = new Mutator(seed,ratio);
-            Bundle fuzzed = m.mutate(data.getBundle(FSERV_KEY_DATA));
-            
-            // Execute the specified command
-            switch (msg.what)
-            {
-            
-            // Echo fuzzed data
-            case FSERV_CMD_ECHO :
-            	repl.setData(fuzzed);
-            	send(msg.replyTo, repl);
-            	return;
-            	
-            // Forward fuzzed data
-            case FSERV_CMD_FWRD :
-            	Intent intent = new Intent();
-            	intent.putExtras(fuzzed);
-            	
-                for (String key : intent.getExtras().keySet()) {
-                    Object obj = intent.getExtras().get(key);
-                    Log.d("SENDING_ITEMS", String.format("%s %s (%s)", key,  
-                        obj.toString(), obj.getClass().getName()));
-                }
-            	
-            	switch (msg.arg1)
-            	{
-            	case FSERV_FWD_START_ACT :
-            		
-            		// Make sure we have a valid target
-            		String pkg = data.getString(FSERV_KEY_TARGPKG, null);
-            		String cmp = data.getString(FSERV_KEY_TARGCMP, null);
-            		if (pkg == null || cmp == null) {
-              			repl.what = FSERV_REPL_ENOTARG;
-              			send(msg.replyTo, repl);
-              			return;
-            		}
-                	intent.setClassName(pkg, cmp);
-            		Log.i("MyService", "Forwarding intent to "
-            				+ String.format("{%s,%s}", pkg, cmp));
-            		
-            		// Required to start activities from outside of an
-            		// activity
-            		intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            		
-                	getApplication().startActivity(intent);
-                	break;
-                	
-            	case FSERV_FWD_SEND_BCST:
-            		Log.i("MyService", "Broadcasting intent");
-            		getApplication().sendBroadcast(intent);
-            		break;
-            	}
-            	break;
-            }
-        }
-        
-        private void send(Messenger messenger, Message msg) {
-            try {
-                messenger.send(msg);
-            } catch (RemoteException e) {
-            	Log.e("MyService", "Unable to deliver reply");
-                e.printStackTrace();
-            }
-        	return;
-        }
+		// Message commands (incoming what)
+		public static final int FSERV_CMD_ECHO = 0;
+		public static final int FSERV_CMD_FWRD = 1;
+		public static final int FSERV_CMD_TEST = 2;
+
+		// Message forward types (incoming arg1)
+		public static final int FSERV_FWD_START_ACT = 0;
+		public static final int FSERV_FWD_START_ACT_FOR_RES = 1;
+		public static final int FSERV_FWD_SEND_BCST = 2;
+		public static final int FSERV_FWD_SEND_ORD_BCST = 3;
+		public static final int FSERV_FWD_TEST = 4;
+
+		// Message fuzz types (incoming arg2)
+		public static final int FSERV_FUZZ_MUTATE = 0;
+		public static final int FSERV_FUZZ_MANGLE = 1;
+		public static final int FSERV_FUZZ_BRUTAL = 2;
+
+		// Message replies (outgoing what)
+		public static final int FSERV_REPL_TIMEOUT = 1;
+		public static final int FSERV_REPL_SUCCESS = 0;
+		public static final int FSERV_REPL_EUNIMPL = -2;
+		public static final int FSERV_REPL_ENOEXTRAS = -3;
+		public static final int FSERV_REPL_EINVPAYLOAD = -4;
+		public static final int FSERV_REPL_ENOTARG = -5;
+
+		// Message bundle keys
+		public static final String FSERV_KEY_SEED = "mut_seed";
+		public static final String FSERV_KEY_RATIO = "mut_ratio";
+		public static final String FSERV_KEY_DATA = "mut_data";
+		public static final String FSERV_KEY_TIMEOUT = "ipc_timout";
+		public static final String FSERV_KEY_TARGPKG = "ipc_target_package";
+		public static final String FSERV_KEY_TARGCMP = "ipc_target_component";
+
+
+		@Override
+		public void handleMessage(Message msg) {
+			Log.i("com.mobilesec.mutatorservice", "Message recieved from client: "
+					+ msg.what + " " + msg.arg1 + " " + msg.arg2);
+
+			// No return address, no service
+			if (msg.replyTo == null) return;
+
+
+			// Initialize reply and grab data
+			Message repl = Message.obtain();
+			Bundle data = msg.getData();
+
+			// Ensure we were sent data to fuzz
+			if (data == null) {
+				repl.what = FSERV_REPL_ENOEXTRAS;
+				send(msg.replyTo, repl);
+				return;
+			}
+			Integer seed = data.getInt(FSERV_KEY_SEED, 10);
+			Float ratio = data.getFloat(FSERV_KEY_RATIO, 0.01f);
+			Bundle mut_data = data.getBundle(FSERV_KEY_DATA);
+			if(mut_data == null || seed == null || ratio == null)
+			{
+				Log.i("com.mobilesec.mutatorservice", "Invalid Payoad... replying with error");
+				repl.what = FSERV_REPL_EINVPAYLOAD;
+				Bundle extras = new Bundle();
+				extras.putBundle("mut_data", mut_data);
+				extras.putInt("seed", seed);
+				extras.putFloat("ratio", ratio);
+				repl.setData(extras);
+				send(msg.replyTo, repl);
+				return;	
+			}
+
+			// Initialize mutator and fuzz the data
+			Mutator m;
+			Bundle fuzzed;
+
+			// Execute the specified command
+			switch (msg.what)
+			{
+
+			// Echo fuzzed data
+			case FSERV_CMD_TEST :
+				Log.i("com.mobilesec.mutatorservice", "Test Command! Returning mut_data");
+
+				m = new Mutator(seed,ratio);
+
+				Bundle payload = deserializeBundle(mut_data.getString("EXTRAS"));
+
+				//ensure payload is not null
+				if(payload == null)
+				{
+					Log.i("com.mobilesec.mutatorservice", String.format("payload :: is null"));
+					repl.what = FSERV_REPL_EINVPAYLOAD;
+					send(msg.replyTo, repl);
+					return;
+				}
+
+				repl.setData(payload);
+				payload = repl.getData();
+				Log.i("com.mobile	sec.mutatorservice", String.format("payload :: %s", payload.toString()));
+
+				Bundle mut_payload = m.mutate(payload);
+				mut_payload.putBoolean("com.mobilesec.FUZZ_INTENT", true);
+				Log.i("com.mobilesec.mutatorservice", String.format("mutated payload :: %s", mut_payload.keySet().toString()));
+
+				mut_data.putBundle("EXTRAS", mut_payload);
+				repl.setData(mut_data);
+				Log.i("com.mobilesec.mutatorservice", String.format("mutated data w/ payload :: %s", mut_data.keySet().toString()));
+
+
+				send(msg.replyTo, repl);
+				return;
+
+
+				// Echo fuzzed data
+			case FSERV_CMD_ECHO :
+				// Initialize mutator and fuzz the data
+				m = new Mutator(seed,ratio);
+				fuzzed = m.mutate(mut_data);
+
+				repl.setData(fuzzed);
+				send(msg.replyTo, repl);
+				return;
+
+				// Forward fuzzed data
+			case FSERV_CMD_FWRD :
+				// Initialize mutator and fuzz the data
+				m = new Mutator(seed,ratio);
+
+				Bundle payload2 = deserializeBundle(mut_data.getString("EXTRAS"));
+
+				//ensure payload is not null
+				if(payload2 == null)
+				{
+					Log.i("com.mobilesec.mutatorservice", String.format("payload :: is null"));
+					repl.what = FSERV_REPL_EINVPAYLOAD;
+					send(msg.replyTo, repl);
+					return;
+				}
+
+				repl.setData(payload2);
+				payload2 = repl.getData();
+				Log.i("com.mobilesec.mutatorservice", String.format("payload :: %s", payload2.toString()));
+
+				Bundle mut_payload2 = m.mutate(payload2);
+				mut_payload2.putBoolean("com.mobilesec.FUZZ_INTENT", true);
+				Log.i("com.mobilesec.mutatorservice", String.format("mutated payload :: %s", mut_payload2.keySet().toString()));
+
+				mut_data.putBundle("EXTRAS", mut_payload2);
+
+				/*
+				 * Build broadcast intent from mutated bundle
+				 * 
+				 */
+				Intent fuzzed_intent = new Intent();
+				for(String key : mut_data.keySet())
+				{
+					if(key.contentEquals("SCHEME")){
+
+					}
+					else if(key.contentEquals("CATEGORY")){
+						fuzzed_intent.addCategory(mut_data.getString(key));
+					}
+					else if(key.contentEquals("ACTION")){
+						fuzzed_intent.setAction(mut_data.getString(key));
+					}
+					else if(key.contentEquals("EXTRAS")){
+						fuzzed_intent.putExtras(mut_data.getBundle(key));
+					}
+					else if(key.contentEquals("FLAGS")){
+						fuzzed_intent.addFlags(Integer.parseInt(mut_data.getString(key)));
+					}
+					else if(key.contentEquals("TYPE")){
+						fuzzed_intent.setType(mut_data.getString(key));
+					}
+					else if(key.contentEquals("URI")){
+						fuzzed_intent.setData(Uri.parse(mut_data.getString(key)));
+					}
+				}
+				Log.i("com.mobilesec.mutatorservice",fuzzed_intent.toString());
+
+/*
+				for (String key : fuzzed_intent.getExtras().keySet()) {
+					Object obj = fuzzed_intent.getExtras().get(key);
+					Log.d("com.mobilesec.mutatorservice", String.format("SENDING ITEMS %s %s (%s)", key,  
+							obj.toString(), obj.getClass().getName()));
+				}
+*/
+				switch (msg.arg1)
+				{
+				case FSERV_FWD_START_ACT :
+
+					// Make sure we have a valid target
+					String pkg = data.getString(FSERV_KEY_TARGPKG, null);
+					String cmp = data.getString(FSERV_KEY_TARGCMP, null);
+					if (pkg == null || cmp == null) {
+						repl.what = FSERV_REPL_ENOTARG;
+						send(msg.replyTo, repl);
+						return;
+					}
+					fuzzed_intent.setClassName(pkg, cmp);
+					Log.i("com.mobilesec.mutatorservice", "Forwarding intent to "
+							+ String.format("{%s,%s}", pkg, cmp));
+
+					// Required to start activities from outside of an
+					// activity
+					//TODO: Strings for explicit keys in activities
+					fuzzed_intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+					getApplication().startActivity(fuzzed_intent);
+					break;
+
+				case FSERV_FWD_SEND_BCST:
+					Log.i("com.mobilesec.mutatorservice", "Broadcasting intent");
+					getApplication().sendBroadcast(fuzzed_intent);
+					repl.what = FSERV_REPL_SUCCESS;
+					send(msg.replyTo, repl);
+					break;
+				case FSERV_FWD_TEST:
+					repl.what = FSERV_REPL_SUCCESS;
+					send(msg.replyTo, repl);
+					break;
+				}
+				break;
+			}
+		}
+
+		private void send(Messenger messenger, Message msg) {
+			try {
+				messenger.send(msg);
+			} catch (RemoteException e) {
+				Log.e("com.mobilesec.mutatorservice", "Unable to deliver reply");
+				e.printStackTrace();
+			}
+			return;
+		}
+
+		private Bundle deserializeBundle(final String base64) {
+			Bundle bundle = null;
+			final Parcel parcel = Parcel.obtain();
+			try {
+				final ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+				final byte[] buffer = new byte[1024];
+				final GZIPInputStream zis = new GZIPInputStream(new ByteArrayInputStream(Base64.decode(base64, 0)));
+				int len = 0;
+				while ((len = zis.read(buffer)) != -1) {
+					byteBuffer.write(buffer, 0, len);
+				}
+				zis.close();
+				parcel.unmarshall(byteBuffer.toByteArray(), 0, byteBuffer.size());
+				parcel.setDataPosition(0);
+				bundle = parcel.readBundle();
+			} catch (IOException e) {
+				e.printStackTrace();
+				bundle = null;
+			} finally {
+				parcel.recycle();
+			}
+
+			return bundle;
+		}
     }
     
     final Messenger clientMessenger =

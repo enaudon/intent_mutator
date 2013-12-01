@@ -177,7 +177,7 @@ public class Mutator {
 	/*
 	 * brutalize -- mutate a Java object
 	 * 
-	 * This guy has no notion of the objects structure--he'll mutate
+	 * This guy has no notion of the object's structure--he'll mutate
 	 * EVERYTHING.  Furthermore, when you get your object back. it's not
 	 * even an object anymore--it has been reduced to raw bytes.  In short,
 	 * this guy is a cold and heartless monster.
@@ -200,7 +200,8 @@ public class Mutator {
 /* ---------------------------------------------------------------------
  * Core Mutation
  * 
- * These are called by the mutate functions.
+ * These are internal mutation functions; most everything eventually calls
+ * these functions.
  * --------------------------------------------------------------------- */
 	
 	/*
@@ -225,6 +226,7 @@ public class Mutator {
 		
         for (String key : bundle.keySet()) {
             Object obj = bundle.get(key);
+            if(obj == null) continue;
             String name = obj.getClass().getName();
 
         	// Yup, this is happening
