@@ -1,4 +1,4 @@
-package com.example.myfirstservice;
+package com.mobilesec.mutator;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -27,7 +27,7 @@ import android.util.Base64;
 import android.util.Log;
 import android.widget.Toast;
 
-public class MyService extends Service {
+public class MutatorService extends Service {
  
     public class RequestHandler extends Handler {
     	
@@ -68,7 +68,7 @@ public class MyService extends Service {
 
 		@Override
 		public void handleMessage(Message msg) {
-			Log.i("com.mobilesec.mutatorservice", "Message recieved from client: "
+			Log.i("handleMessage", "Message recieved from client: "
 					+ msg.what + " " + msg.arg1 + " " + msg.arg2);
 
 			// No return address, no service
@@ -100,7 +100,7 @@ public class MyService extends Service {
 			Bundle mut_data = data.getBundle(FSERV_KEY_DATA);
 			if(mut_data == null || seed == null || ratio == null)
 			{
-				Log.i("com.mobilesec.mutatorservice", "Invalid Payoad... replying with error");
+				Log.i("Null Check", "Invalid Payoad... replying with error");
 				repl.what = FSERV_REPL_EINVPAYLOAD;
 				Bundle extras = new Bundle();
 				extras.putBundle("mut_data", mut_data);
@@ -120,8 +120,8 @@ public class MyService extends Service {
 			{
 
 			// Echo fuzzed data
-			case FSERV_CMD_TEST :
-				Log.i("FSERV_CMD_TEST", "Test Command! Returning mut_data");
+			case FSERV_CMD_ECHO :
+				Log.i("FSERV_CMD_ECHO", "Test Command! Returning mut_data");
 
 				m = new Mutator(seed,ratio);
 
@@ -130,7 +130,7 @@ public class MyService extends Service {
 				//ensure payload is not null
 				if(payload == null)
 				{
-					Log.i("FSERV_CMD_TEST", String.format("payload :: is null"));
+					Log.i("FSERV_CMD_ECHO", String.format("payload :: is null"));
 					repl.what = FSERV_REPL_EINVPAYLOAD;
 					send(msg.replyTo, repl);
 					return;
@@ -138,32 +138,21 @@ public class MyService extends Service {
 
 				repl.setData(payload);
 				payload = repl.getData();
-				Log.i("FSERV_CMD_TEST", String.format("payload :: %s", payload.toString()));
+				Log.i("FSERV_CMD_ECHO", String.format("payload :: %s", payload.toString()));
 
 				Bundle mut_payload = m.mutate(payload);
 				mut_payload.putBoolean("com.mobilesec.FUZZ_INTENT", true);
-				Log.i("FSERV_CMD_TEST", String.format("mutated payload :: %s", mut_payload.keySet().toString()));
+				Log.i("FSERV_CMD_ECHO", String.format("mutated payload :: %s", mut_payload.keySet().toString()));
 
 				mut_data.putBundle("EXTRAS", mut_payload);
 				repl.setData(mut_data);
-				Log.i("FSERV_CMD_TEST", String.format("mutated data w/ payload :: %s", mut_data.keySet().toString()));
+				Log.i("FSERV_CMD_ECHO", String.format("mutated data w/ payload :: %s", mut_data.keySet().toString()));
 
 
 				send(msg.replyTo, repl);
 				return;
 
-
-				// Echo fuzzed data
-			case FSERV_CMD_ECHO :
-				// Initialize mutator and fuzz the data
-				m = new Mutator(seed,ratio);
-				fuzzed = m.mutate(mut_data);
-
-				repl.setData(fuzzed);
-				send(msg.replyTo, repl);
-				return;
-
-				// Forward fuzzed data
+			// Forward fuzzed data
 			case FSERV_CMD_FWRD :
 				// Initialize mutator and fuzz the data
 				m = new Mutator(seed,ratio);

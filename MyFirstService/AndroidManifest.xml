@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.myfirstservice"
+    package="com.mobilesec.mutator"
     android:versionCode="1"
     android:versionName="1.0" >
 
@@ -15,7 +15,7 @@
         android:theme="@style/AppTheme" >
         
 		<service
-			android:name="com.example.myfirstservice.MyService"
+			android:name="com.mobilesec.mutator.MutatorService"
 			android:exported="true"
 			android:process="com.example.myfirstservice.MyService.s"  />
 

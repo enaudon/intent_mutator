@@ -1,4 +1,4 @@
-package com.example.myfirstservice;
+package com.mobilesec.mutator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -51,7 +51,7 @@ public class Mutator {
 	 */
 	public boolean mutate(boolean b) {
 		if (r.nextFloat() < ratio)
-			b = !b;
+			return !b;
 		return b;
 	}
 	
