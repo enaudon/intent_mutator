@@ -247,6 +247,17 @@ public class Mutator {
         	else if (name.equals(CLASS_STRING))
         		fuzzed.putString(key, mutate((String) obj));
         }
+        //TODO: Mutate classes that are non-primitive?
+        //TODO: Common string formats to preserve 
+        		//emails, 
+        		//Object REference (Ljava.lang.Object;@4220ca08), 
+        		//package name 
+        		//String encoded booleans
+        		//ip address
+        //TODO: Integer (negative, zero, very big, very small)
+        //TODO: One extra at a time?
+        //TODO: 'Interesting-ness' based on extras (booleans less interesting)
+
         
         return fuzzed;
 	}

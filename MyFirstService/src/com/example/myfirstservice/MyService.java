@@ -3,10 +3,18 @@ package com.example.myfirstservice;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageItemInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,6 +25,7 @@ import android.os.Parcel;
 import android.os.RemoteException;
 import android.util.Base64;
 import android.util.Log;
+import android.widget.Toast;
 
 public class MyService extends Service {
  
@@ -26,6 +35,7 @@ public class MyService extends Service {
 		public static final int FSERV_CMD_ECHO = 0;
 		public static final int FSERV_CMD_FWRD = 1;
 		public static final int FSERV_CMD_TEST = 2;
+		public static final int FSERV_CMD_NULL = 3;
 
 		// Message forward types (incoming arg1)
 		public static final int FSERV_FWD_START_ACT = 0;
@@ -64,11 +74,21 @@ public class MyService extends Service {
 			// No return address, no service
 			if (msg.replyTo == null) return;
 
+			
+			
 
 			// Initialize reply and grab data
 			Message repl = Message.obtain();
 			Bundle data = msg.getData();
 
+			if(msg.what == FSERV_CMD_NULL)
+			{
+				nullFuzz();
+				repl.what = FSERV_REPL_SUCCESS;
+				send(msg.replyTo, repl);
+				return;
+			}
+			
 			// Ensure we were sent data to fuzz
 			if (data == null) {
 				repl.what = FSERV_REPL_ENOEXTRAS;
@@ -101,7 +121,7 @@ public class MyService extends Service {
 
 			// Echo fuzzed data
 			case FSERV_CMD_TEST :
-				Log.i("com.mobilesec.mutatorservice", "Test Command! Returning mut_data");
+				Log.i("FSERV_CMD_TEST", "Test Command! Returning mut_data");
 
 				m = new Mutator(seed,ratio);
 
@@ -110,7 +130,7 @@ public class MyService extends Service {
 				//ensure payload is not null
 				if(payload == null)
 				{
-					Log.i("com.mobilesec.mutatorservice", String.format("payload :: is null"));
+					Log.i("FSERV_CMD_TEST", String.format("payload :: is null"));
 					repl.what = FSERV_REPL_EINVPAYLOAD;
 					send(msg.replyTo, repl);
 					return;
@@ -118,15 +138,15 @@ public class MyService extends Service {
 
 				repl.setData(payload);
 				payload = repl.getData();
-				Log.i("com.mobile	sec.mutatorservice", String.format("payload :: %s", payload.toString()));
+				Log.i("FSERV_CMD_TEST", String.format("payload :: %s", payload.toString()));
 
 				Bundle mut_payload = m.mutate(payload);
 				mut_payload.putBoolean("com.mobilesec.FUZZ_INTENT", true);
-				Log.i("com.mobilesec.mutatorservice", String.format("mutated payload :: %s", mut_payload.keySet().toString()));
+				Log.i("FSERV_CMD_TEST", String.format("mutated payload :: %s", mut_payload.keySet().toString()));
 
 				mut_data.putBundle("EXTRAS", mut_payload);
 				repl.setData(mut_data);
-				Log.i("com.mobilesec.mutatorservice", String.format("mutated data w/ payload :: %s", mut_data.keySet().toString()));
+				Log.i("FSERV_CMD_TEST", String.format("mutated data w/ payload :: %s", mut_data.keySet().toString()));
 
 
 				send(msg.replyTo, repl);
@@ -153,7 +173,7 @@ public class MyService extends Service {
 				//ensure payload is not null
 				if(payload2 == null)
 				{
-					Log.i("com.mobilesec.mutatorservice", String.format("payload :: is null"));
+					Log.i("FSERV_CMD_FWRD", String.format("payload :: is null"));
 					repl.what = FSERV_REPL_EINVPAYLOAD;
 					send(msg.replyTo, repl);
 					return;
@@ -161,52 +181,18 @@ public class MyService extends Service {
 
 				repl.setData(payload2);
 				payload2 = repl.getData();
-				Log.i("com.mobilesec.mutatorservice", String.format("payload :: %s", payload2.toString()));
+				Log.i("FSERV_CMD_FWRD", String.format("payload :: %s", payload2.toString()));
 
 				Bundle mut_payload2 = m.mutate(payload2);
 				mut_payload2.putBoolean("com.mobilesec.FUZZ_INTENT", true);
-				Log.i("com.mobilesec.mutatorservice", String.format("mutated payload :: %s", mut_payload2.keySet().toString()));
+				Log.i("FSERV_CMD_FWRD", String.format("mutated payload :: %s", mut_payload2.keySet().toString()));
 
 				mut_data.putBundle("EXTRAS", mut_payload2);
 
-				/*
-				 * Build broadcast intent from mutated bundle
-				 * 
-				 */
-				Intent fuzzed_intent = new Intent();
-				for(String key : mut_data.keySet())
-				{
-					if(key.contentEquals("SCHEME")){
+				Intent fuzzed_intent = buildFuzzedIntent(mut_data);
+				
+				Log.i("FSERV_CMD_FWRD",fuzzed_intent.toString());
 
-					}
-					else if(key.contentEquals("CATEGORY")){
-						fuzzed_intent.addCategory(mut_data.getString(key));
-					}
-					else if(key.contentEquals("ACTION")){
-						fuzzed_intent.setAction(mut_data.getString(key));
-					}
-					else if(key.contentEquals("EXTRAS")){
-						fuzzed_intent.putExtras(mut_data.getBundle(key));
-					}
-					else if(key.contentEquals("FLAGS")){
-						fuzzed_intent.addFlags(Integer.parseInt(mut_data.getString(key)));
-					}
-					else if(key.contentEquals("TYPE")){
-						fuzzed_intent.setType(mut_data.getString(key));
-					}
-					else if(key.contentEquals("URI")){
-						fuzzed_intent.setData(Uri.parse(mut_data.getString(key)));
-					}
-				}
-				Log.i("com.mobilesec.mutatorservice",fuzzed_intent.toString());
-
-/*
-				for (String key : fuzzed_intent.getExtras().keySet()) {
-					Object obj = fuzzed_intent.getExtras().get(key);
-					Log.d("com.mobilesec.mutatorservice", String.format("SENDING ITEMS %s %s (%s)", key,  
-							obj.toString(), obj.getClass().getName()));
-				}
-*/
 				switch (msg.arg1)
 				{
 				case FSERV_FWD_START_ACT :
@@ -232,8 +218,8 @@ public class MyService extends Service {
 					break;
 
 				case FSERV_FWD_SEND_BCST:
-					Log.i("com.mobilesec.mutatorservice", "Broadcasting intent");
-					getApplication().sendBroadcast(fuzzed_intent);
+					Log.i("FSERV_FWD_SEND_BCST", "Broadcasting intent");
+					sendComponentBroadcast(fuzzed_intent);
 					repl.what = FSERV_REPL_SUCCESS;
 					send(msg.replyTo, repl);
 					break;
@@ -244,6 +230,66 @@ public class MyService extends Service {
 				}
 				break;
 			}
+		}
+
+		private void sendComponentBroadcast(Intent fuzzed_intent) {
+			PackageManager pm = getPackageManager();
+			ArrayList<ComponentName> found = new ArrayList<ComponentName>();
+        	Log.i("sendComponentBroadcast...", "Method Start");
+
+        	Intent queryIntent = new Intent();
+        	queryIntent.setAction(fuzzed_intent.getAction());
+	        final List<ResolveInfo> activities = pm.queryBroadcastReceivers(queryIntent, 0);
+	        for (ResolveInfo resolveInfo : activities) {
+	            ActivityInfo activityInfo = resolveInfo.activityInfo;
+	            
+	            if (activityInfo != null)
+	            {
+	            	if(activityInfo.name.contains("sniffer"))
+	            		continue;
+	            	//Log.i("sendComponentBroadcast...", "Found component::" + activityInfo.name);
+	                found.add(new ComponentName(activityInfo.applicationInfo.packageName, activityInfo.name));
+	    	     }
+
+	        }
+	        for( ComponentName cn : found)
+	        {
+	        	Log.i("sendComponentBroadcast++", cn.toShortString());
+	        	fuzzed_intent.setComponent(cn);
+	        	getApplication().sendBroadcast(fuzzed_intent);
+	        	Log.i("sendComponentBroadcast--", cn.toShortString());
+
+	        	//Thread.sleep(1000);
+	        }
+		}
+
+		private Intent buildFuzzedIntent(Bundle mut_data) {
+			Intent fuzzed_intent = new Intent();
+			for(String key : mut_data.keySet())
+			{
+				if(key.contentEquals("SCHEME")){
+				}
+				else if(key.contentEquals("CATEGORY")){
+					fuzzed_intent.addCategory(mut_data.getString(key));
+				}
+				else if(key.contentEquals("ACTION")){
+					fuzzed_intent.setAction(mut_data.getString(key));
+				}
+				else if(key.contentEquals("EXTRAS")){
+					fuzzed_intent.putExtras(mut_data.getBundle(key));
+				}
+				else if(key.contentEquals("FLAGS")){
+					fuzzed_intent.addFlags(Integer.parseInt(mut_data.getString(key)));
+				}
+				else if(key.contentEquals("TYPE")){
+					fuzzed_intent.setType(mut_data.getString(key));
+				}
+				else if(key.contentEquals("URI")){
+					fuzzed_intent.setData(Uri.parse(mut_data.getString(key)));
+				}
+			}
+			
+			return fuzzed_intent;
 		}
 
 		private void send(Messenger messenger, Message msg) {
@@ -281,6 +327,34 @@ public class MyService extends Service {
 			return bundle;
 		}
     }
+    
+	private void nullFuzz() {
+		ArrayList<ComponentName> found = new ArrayList<ComponentName>();
+		PackageManager pm = getPackageManager();
+		for (PackageInfo pi : pm.getInstalledPackages(PackageManager.GET_RECEIVERS)) {
+			ActivityInfo items[] = null;
+			items = pi.receivers;
+			
+			
+			if (items != null)
+				for (ActivityInfo recvr : items)
+					found.add(new ComponentName(pi.packageName, recvr.name));
+		}
+		String str = String.format("%s components found", found.size());
+		Toast.makeText(getApplicationContext(), str,Toast.LENGTH_SHORT).show();
+		Log.i("com.mobilesec.mutatorservice", "BroadCastFuzz..."+str);
+
+		/*
+		for (int i = 0; i < found.size(); i++) {
+			Intent in = new Intent();
+			in.setComponent(found.get(i));
+			sendBroadcast(in);
+		}*/
+		ComponentName cn = new ComponentName("com.amazon.kindle", "com.amazon.kcp.recommendation.CampaignWebView");
+		Intent in = new Intent();
+		in.setComponent(cn);
+		sendBroadcast(in);
+	}
     
     final Messenger clientMessenger =
     		new Messenger(new RequestHandler());
